@@ -14,6 +14,7 @@ from PIL import Image
 from plugin_resolution import REPO_ROOT
 
 PLUGINS_DIR = REPO_ROOT / "plugins"
+INDEX_JSON_PATH = REPO_ROOT / "index.json"
 ALLOWED_FIELDS = {"title", "description", "github", "tags", "screenshots"}
 REQUIRED_FIELDS = {"title", "description", "github"}
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -131,6 +132,41 @@ def _parse_repo_url(url: str) -> tuple[str, str] | None:
     if not match:
         return None
     return match.group(1), match.group(2)
+
+
+def _normalize_repo_url(url: str) -> str | None:
+    parsed = _parse_repo_url(url)
+    if not parsed:
+        return None
+    owner, repo = parsed
+    return f"https://github.com/{owner.lower()}/{repo.lower()}"
+
+
+def _validate_github_repo_not_in_index(plugin_name: str, url: str) -> None:
+    normalized_url = _normalize_repo_url(url)
+    if not normalized_url or not INDEX_JSON_PATH.exists():
+        return
+    try:
+        loaded = json.loads(INDEX_JSON_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        _fail(f"Unable to parse {INDEX_JSON_PATH.name}: {e}")
+    if not isinstance(loaded, dict):
+        _fail(f"{INDEX_JSON_PATH.name} must contain a JSON object")
+    plugins = loaded.get("plugins")
+    if not isinstance(plugins, dict):
+        return
+    for indexed_plugin_name, indexed_plugin in plugins.items():
+        if indexed_plugin_name == plugin_name or not isinstance(indexed_plugin, dict):
+            continue
+        indexed_url = indexed_plugin.get("github")
+        if not isinstance(indexed_url, str):
+            continue
+        normalized_indexed_url = _normalize_repo_url(indexed_url)
+        if normalized_indexed_url == normalized_url:
+            _fail(
+                f"github repository is already present in {INDEX_JSON_PATH.name} "
+                f"for plugin '{indexed_plugin_name}'"
+            )
 
 
 def _request_json(url: str) -> dict[str, Any]:
@@ -271,6 +307,7 @@ def main() -> int:
         _fail(f"Plugin directory does not exist in PR head: plugins/{plugin_name}")
     meta = _read_plugin_yaml(plugin_name)
     _validate_fields(meta)
+    _validate_github_repo_not_in_index(plugin_name, cast(str, meta.get("github")))
     _validate_allowed_files(plugin_dir)
     _validate_thumbnail(plugin_dir)
     print(f"Validation passed for plugin: {plugin_name}")

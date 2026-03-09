@@ -59,16 +59,16 @@ def _normalize_plugin_names(names: list[str]) -> list[str]:
     filtered: list[str] = []
     skipped: list[str] = []
     for n in names:
-        if n and is_valid_plugin_dirname(n):
+        if n and is_valid_plugin_dirname(n) and not n.startswith("_"):
             filtered.append(n)
         else:
             skipped.append(n)
 
     if skipped:
         print(
-            "Skipping invalid plugin directory names: "
+            "Skipping invalid or reserved plugin directory names: "
             + ", ".join(sorted(set(skipped)))
-            + " (expected lowercase letters, numbers, underscores only)"
+            + " (expected lowercase letters, numbers, underscores only, without leading underscore)"
         )
 
     return sorted(set(filtered))
